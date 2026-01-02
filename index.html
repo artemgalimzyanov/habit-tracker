@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Habit Tracker - 2026 Cloud</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --card-bg: #161b22;
+            --border-color: #30363d;
+            --text-main: #c9d1d9;
+            --text-muted: #8b949e;
+            --empty-square: #161b22;
+            --square-border: rgba(255, 255, 255, 0.05);
+        }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        }
+
+        .heatmap-wrapper {
+            display: flex;
+            gap: 8px;
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .day-labels {
+            display: grid;
+            grid-template-rows: repeat(7, 10px);
+            gap: 4px;
+            padding-top: 20px;
+        }
+
+        .month-labels-container {
+            position: relative;
+            height: 15px;
+            margin-bottom: 5px;
+            width: 100%;
+        }
+
+        .month-label {
+            position: absolute;
+            white-space: nowrap;
+        }
+
+        .heatmap-container {
+            flex-grow: 1;
+        }
+
+        .heatmap-grid {
+            display: grid;
+            grid-template-columns: repeat(53, 10px);
+            grid-template-rows: repeat(7, 10px);
+            grid-auto-flow: column;
+            gap: 4px;
+        }
+
+        .day-square {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            background-color: var(--empty-square);
+            outline: 1px solid var(--square-border);
+            outline-offset: -1px;
+            cursor: pointer;
+            transition: outline 0.1s ease;
+        }
+
+        .day-square:hover {
+            outline: 1px solid #71767c;
+            z-index: 10;
+        }
+
+        .day-square.out-of-range {
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            height: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #0d1117;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #30363d;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <header class="flex justify-between items-center mb-8 border-b border-gray-800 pb-4">
+            <div>
+                <h1 class="text-xl font-semibold text-white">Habit Tracker 2026</h1>
+                <p id="auth-status" class="text-[10px] text-gray-500 mt-1">Connecting to cloud...</p>
+            </div>
+            <button id="add-btn" disabled onclick="openModal()" class="bg-[#238636] opacity-50 cursor-not-allowed hover:bg-[#2ea043] text-white px-3 py-1.5 rounded-md text-sm font-medium transition">
+                Create new habit
+            </button>
+        </header>
+
+        <div id="habits-container" class="space-y-6">
+            <div class="text-center py-20 text-gray-500">Loading your habits...</div>
+        </div>
+    </div>
+
+    <div id="modal" class="fixed inset-0 bg-black bg-opacity-70 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-[#161b22] border border-[#30363d] rounded-lg w-full max-w-md p-6 shadow-2xl">
+            <h2 class="text-lg font-semibold text-white mb-4">Add New Habit</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">NAME</label>
+                    <input type="text" id="habit-name" placeholder="e.g. Sport" class="w-full bg-[#0d1117] border border-[#30363d] rounded p-2 text-white focus:outline-none focus:border-[#238636]">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">COLOR</label>
+                    <select id="habit-color" class="w-full bg-[#0d1117] border border-[#30363d] rounded p-2 text-white">
+                        <option value="#39d353">GitHub Green</option>
+                        <option value="#38bdf8">Sky Blue</option>
+                        <option value="#f471ff">Purple</option>
+                        <option value="#fb923c">Orange</option>
+                        <option value="#f85149">Red</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3 mt-8">
+                <button onclick="closeModal()" class="text-gray-400 hover:text-white text-sm">Cancel</button>
+                <button onclick="addHabit()" class="bg-[#238636] hover:bg-[#2ea043] text-white px-4 py-2 rounded text-sm font-medium">Add Habit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Configuration (Empty strings will be populated by environment)
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        let currentUser = null;
+        let habits = [];
+
+        // UI Helpers
+        window.openModal = () => document.getElementById('modal').classList.remove('hidden');
+        window.closeModal = () => {
+            document.getElementById('modal').classList.add('hidden');
+            document.getElementById('habit-name').value = '';
+        };
+
+        // --- AUTHENTICATION ---
+        const initAuth = async () => {
+            try {
+                // We always use anonymous for this simple demo
+                await signInAnonymously(auth);
+            } catch (error) {
+                console.error("Auth error:", error);
+                document.getElementById('auth-status').innerText = "Cloud Sync Error";
+            }
+        };
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                document.getElementById('auth-status').innerText = `Cloud Active (ID: ${user.uid.substring(0,8)}...)`;
+                document.getElementById('add-btn').disabled = false;
+                document.getElementById('add-btn').classList.remove('opacity-50', 'cursor-not-allowed');
+                startSync(user.uid);
+            }
+        });
+
+        // --- FIRESTORE SYNC ---
+        const startSync = (userId) => {
+            const habitsRef = collection(db, 'artifacts', appId, 'users', userId, 'habits');
+            
+            // Real-time listener
+            onSnapshot(habitsRef, (snapshot) => {
+                habits = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                render();
+            }, (error) => {
+                console.error("Sync error:", error);
+            });
+        };
+
+        // --- HABIT ACTIONS ---
+        window.addHabit = async () => {
+            if (!currentUser) return;
+            const name = document.getElementById('habit-name').value;
+            const color = document.getElementById('habit-color').value;
+            if (!name) return;
+
+            const habitsRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'habits');
+            await addDoc(habitsRef, {
+                name: name,
+                color: color,
+                completedDays: [],
+                createdAt: Date.now()
+            });
+            closeModal();
+        };
+
+        window.deleteHabit = async (id) => {
+            if (!currentUser || !confirm('Delete this habit?')) return;
+            const habitDoc = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'habits', id);
+            await deleteDoc(habitDoc);
+        };
+
+        window.toggleDay = async (habitId, dateStr) => {
+            if (!currentUser) return;
+            const habit = habits.find(h => h.id === habitId);
+            const habitDoc = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'habits', habitId);
+            
+            let newDays = [...habit.completedDays];
+            if (newDays.includes(dateStr)) {
+                newDays = newDays.filter(d => d !== dateStr);
+            } else {
+                newDays.push(dateStr);
+            }
+            
+            await updateDoc(habitDoc, { completedDays: newDays });
+        };
+
+        // --- RENDERING LOGIC ---
+        function get2026Grid() {
+            const dates = [];
+            const startDate = new Date(2025, 11, 29); // Monday
+            for (let i = 0; i < 53 * 7; i++) {
+                const d = new Date(startDate);
+                d.setDate(startDate.getDate() + i);
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                const dateStr = `${year}-${month}-${day}`;
+                dates.push({
+                    dateStr: dateStr,
+                    monthName: d.toLocaleString('default', { month: 'short' }),
+                    isOutOfRange: d.getFullYear() !== 2026
+                });
+            }
+            return dates;
+        }
+
+        function render() {
+            const container = document.getElementById('habits-container');
+            container.innerHTML = '';
+            
+            if (habits.length === 0) {
+                container.innerHTML = `<div class="text-center py-20 text-gray-500 border border-dashed border-gray-800 rounded-lg">No habits found. Create one to start cloud tracking!</div>`;
+                return;
+            }
+
+            const gridData = get2026Grid();
+            const months = [];
+            gridData.forEach((d, i) => {
+                if (i % 7 === 0) {
+                    const weekIdx = i / 7;
+                    if (weekIdx === 0) months.push({ name: "Jan", index: 0 });
+                    else if (months.length > 0 && months[months.length-1].name !== d.monthName) {
+                        months.push({ name: d.monthName, index: weekIdx });
+                    }
+                }
+            });
+
+            habits.sort((a,b) => (a.createdAt || 0) - (b.createdAt || 0)).forEach(habit => {
+                const card = document.createElement('div');
+                card.className = "bg-[#0d1117] border border-[#30363d] rounded-md p-4";
+                
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 class="text-sm font-medium text-gray-200">${habit.name}</h3>
+                        <button onclick="deleteHabit('${habit.id}')" class="text-[10px] text-gray-600 hover:text-red-400 transition">Remove</button>
+                    </div>
+                    <div class="overflow-x-auto custom-scrollbar pb-2">
+                        <div class="heatmap-wrapper" style="min-width: 750px;">
+                            <div class="day-labels">
+                                <span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span><span>Sun</span>
+                            </div>
+                            <div class="heatmap-container">
+                                <div class="month-labels-container">
+                                    ${months.map(m => `<div class="month-label" style="left: ${m.index * 14}px;">${m.name}</div>`).join('')}
+                                </div>
+                                <div class="heatmap-grid">
+                                    ${gridData.map(d => {
+                                        const active = habit.completedDays.includes(d.dateStr);
+                                        return `<div class="day-square ${d.isOutOfRange ? 'out-of-range' : ''}" 
+                                                     style="${active ? `background-color: ${habit.color}; outline: none;` : ''}" 
+                                                     title="${d.dateStr}"
+                                                     onclick="toggleDay('${habit.id}', '${d.dateStr}')">
+                                                </div>`;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        initAuth();
+    </script>
+</body>
+</html>
