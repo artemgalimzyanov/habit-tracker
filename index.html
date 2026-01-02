@@ -22,74 +22,36 @@
         }
 
         .heatmap-wrapper {
-            display: flex;
-            gap: 8px;
-            font-size: 10px;
-            color: var(--text-muted);
+            display: flex; gap: 8px; font-size: 10px; color: var(--text-muted);
         }
 
         .day-labels {
-            display: grid;
-            grid-template-rows: repeat(7, 10px);
-            gap: 4px;
-            padding-top: 20px;
+            display: grid; grid-template-rows: repeat(7, 10px); gap: 4px; padding-top: 20px;
         }
 
         .month-labels-container {
-            position: relative;
-            height: 15px;
-            margin-bottom: 5px;
-            width: 100%;
+            position: relative; height: 15px; margin-bottom: 5px; width: 100%;
         }
 
-        .month-label {
-            position: absolute;
-            white-space: nowrap;
-        }
-
-        .heatmap-container {
-            flex-grow: 1;
-        }
+        .month-label { position: absolute; white-space: nowrap; }
 
         .heatmap-grid {
-            display: grid;
-            grid-template-columns: repeat(53, 10px);
-            grid-template-rows: repeat(7, 10px);
-            grid-auto-flow: column;
-            gap: 4px;
+            display: grid; grid-template-columns: repeat(53, 10px); grid-template-rows: repeat(7, 10px); grid-auto-flow: column; gap: 4px;
         }
 
         .day-square {
-            width: 10px;
-            height: 10px;
-            border-radius: 2px;
-            background-color: var(--empty-square);
-            outline: 1px solid var(--square-border);
-            outline-offset: -1px;
-            cursor: pointer;
-            transition: outline 0.1s ease;
+            width: 10px; height: 10px; border-radius: 2px; background-color: var(--empty-square); outline: 1px solid var(--square-border); outline-offset: -1px; cursor: pointer; transition: outline 0.1s ease;
         }
 
-        .day-square:hover {
-            outline: 1px solid #71767c;
-            z-index: 10;
-        }
+        .day-square:hover { outline: 1px solid #71767c; z-index: 10; }
 
-        .day-square.out-of-range {
-            visibility: hidden;
-            pointer-events: none;
-        }
+        .day-square.out-of-range { visibility: hidden; pointer-events: none; }
 
-        .custom-scrollbar::-webkit-scrollbar {
-            height: 8px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-            background: #0d1117;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #30363d;
-            border-radius: 10px;
-        }
+        .custom-scrollbar::-webkit-scrollbar { height: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #0d1117; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #30363d; border-radius: 10px; }
+
+        .hidden-auth { display: none !important; }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -98,15 +60,38 @@
         <header class="flex justify-between items-center mb-8 border-b border-gray-800 pb-4">
             <div>
                 <h1 class="text-xl font-semibold text-white">Habit Tracker 2026</h1>
-                <p id="auth-status" class="text-[10px] text-gray-500 mt-1">Initializing Firebase...</p>
+                <p id="auth-status" class="text-[10px] text-gray-500 mt-1">Initializing...</p>
             </div>
-            <button id="add-btn" disabled onclick="openModal()" class="bg-[#238636] opacity-50 cursor-not-allowed hover:bg-[#2ea043] text-white px-3 py-1.5 rounded-md text-sm font-medium transition">
-                Create new habit
-            </button>
+            
+            <div id="user-controls" class="flex items-center gap-4">
+                <button id="login-btn" onclick="signIn()" class="hidden-auth bg-white text-black px-4 py-1.5 rounded-md text-sm font-medium hover:bg-gray-200 transition">
+                    Sign in with Google
+                </button>
+
+                <div id="logged-in-controls" class="hidden-auth flex items-center gap-4">
+                    <button id="add-btn" onclick="openModal()" class="bg-[#238636] hover:bg-[#2ea043] text-white px-3 py-1.5 rounded-md text-sm font-medium transition">
+                        New Habit
+                    </button>
+                    <div class="flex items-center gap-2 border-l border-gray-700 pl-4">
+                        <img id="user-photo" src="" class="w-8 h-8 rounded-full border border-gray-600 hidden">
+                        <button onclick="handleSignOut()" class="text-xs text-gray-500 hover:text-white">Sign Out</button>
+                    </div>
+                </div>
+            </div>
         </header>
 
-        <div id="habits-container" class="space-y-6">
-            <div class="text-center py-20 text-gray-500">Waiting for authentication...</div>
+        <div id="error-banner" class="hidden mb-6 p-4 bg-red-900/20 border border-red-800 text-red-400 text-sm rounded-md">
+            <strong>Configuration Error:</strong> <span id="error-message"></span>
+        </div>
+
+        <div id="main-content">
+            <div id="logged-out-view" class="text-center py-20 bg-[#161b22] border border-[#30363d] rounded-xl">
+                <h2 class="text-xl text-white mb-2">Track your progress in 2026</h2>
+                <p class="text-gray-400 mb-6">Sign in to sync your habits across all your devices.</p>
+                <button onclick="signIn()" class="bg-white text-black px-6 py-2 rounded-full font-semibold hover:bg-gray-200">Get Started</button>
+            </div>
+
+            <div id="habits-container" class="hidden-auth space-y-6"></div>
         </div>
     </div>
 
@@ -114,34 +99,48 @@
         <div class="bg-[#161b22] border border-[#30363d] rounded-lg w-full max-w-md p-6 shadow-2xl">
             <h2 class="text-lg font-semibold text-white mb-4">Add New Habit</h2>
             <div class="space-y-4">
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">NAME</label>
-                    <input type="text" id="habit-name" placeholder="e.g. Sport" class="w-full bg-[#0d1117] border border-[#30363d] rounded p-2 text-white focus:outline-none focus:border-[#238636]">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-400 mb-1">COLOR</label>
-                    <select id="habit-color" class="w-full bg-[#0d1117] border border-[#30363d] rounded p-2 text-white">
-                        <option value="#39d353">GitHub Green</option>
-                        <option value="#38bdf8">Sky Blue</option>
-                        <option value="#f471ff">Purple</option>
-                        <option value="#fb923c">Orange</option>
-                        <option value="#f85149">Red</option>
-                    </select>
-                </div>
+                <input type="text" id="habit-name" placeholder="Habit Name" class="w-full bg-[#0d1117] border border-[#30363d] rounded p-2 text-white focus:outline-none focus:border-[#238636]">
+                <select id="habit-color" class="w-full bg-[#0d1117] border border-[#30363d] rounded p-2 text-white">
+                    <option value="#39d353">Green</option>
+                    <option value="#38bdf8">Blue</option>
+                    <option value="#f471ff">Purple</option>
+                    <option value="#fb923c">Orange</option>
+                </select>
             </div>
             <div class="flex justify-end space-x-3 mt-8">
-                <button onclick="closeModal()" class="text-gray-400 hover:text-white text-sm">Cancel</button>
-                <button onclick="addHabit()" class="bg-[#238636] hover:bg-[#2ea043] text-white px-4 py-2 rounded text-sm font-medium">Add Habit</button>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-white">Cancel</button>
+                <button onclick="addHabit()" class="bg-[#238636] px-4 py-2 rounded text-white font-medium hover:bg-[#2ea043]">Add Habit</button>
             </div>
         </div>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { 
+            getAuth, 
+            signInWithPopup, 
+            GoogleAuthProvider, 
+            onAuthStateChanged, 
+            signOut 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            collection, 
+            doc, 
+            addDoc, 
+            updateDoc, 
+            deleteDoc, 
+            onSnapshot, 
+            query, 
+            orderBy 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        
+        /**
+         * ACTION REQUIRED: Replace the values below with your actual Firebase Project keys.
+         * The error you received (auth/api-key-not-valid) means the strings below 
+         * are currently placeholders and not your real Google API keys.
+         */
+
 
         const firebaseConfig = {
             apiKey: "AIzaSyBcyXDEZnj0E_sPcUKpo-GS4gsCvhCvWIQ",
@@ -151,14 +150,98 @@
             messagingSenderId: "706204557684",
             appId: "1:706204557684:web:5947ed40d606b9abd64c21",
             measurementId: "G-1268DVE7Q8"
-            };
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'habit-tracker-2026';
+        };
 
-        let currentUser = null;
-        let habits = [];
+        function showError(msg) {
+            const banner = document.getElementById('error-banner');
+            const text = document.getElementById('error-message');
+            banner.classList.remove('hidden');
+            text.innerText = msg;
+        }
+
+        let auth, db, currentUser = null, habits = [], unsubscribe = null;
+        const appId = 'habit-tracker-2026';
+        const provider = new GoogleAuthProvider();
+
+        try {
+            // Check if user has actually replaced the placeholder text
+            if (firebaseConfig.apiKey.includes("PASTE_YOUR")) {
+                throw new Error("You must replace the placeholder API keys in the code with your actual Firebase configuration found in Project Settings.");
+            }
+
+            const app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+
+            onAuthStateChanged(auth, (user) => {
+                updateUI(user);
+                if (user) {
+                    currentUser = user;
+                    startSync(user.uid);
+                } else {
+                    currentUser = null;
+                    if (unsubscribe) unsubscribe();
+                }
+            });
+
+        } catch (err) {
+            console.error("Initialization Error:", err);
+            showError(err.message);
+        }
+
+        window.signIn = async () => {
+            try {
+                await signInWithPopup(auth, provider);
+            } catch (err) {
+                console.error("Login failed", err);
+                showError(`Login failed: ${err.message}`);
+            }
+        };
+
+        window.handleSignOut = () => {
+            if(confirm("Are you sure you want to sign out?")) {
+                signOut(auth);
+            }
+        };
+
+        function updateUI(user) {
+            const loginBtn = document.getElementById('login-btn');
+            const loggedInControls = document.getElementById('logged-in-controls');
+            const loggedOutView = document.getElementById('logged-out-view');
+            const habitsContainer = document.getElementById('habits-container');
+            const authStatus = document.getElementById('auth-status');
+
+            if (user) {
+                loginBtn.classList.add('hidden-auth');
+                loggedInControls.classList.remove('hidden-auth');
+                loggedOutView.classList.add('hidden-auth');
+                habitsContainer.classList.remove('hidden-auth');
+                authStatus.innerText = `Signed in as ${user.displayName || 'User'}`;
+                if (user.photoURL) {
+                    const img = document.getElementById('user-photo');
+                    img.src = user.photoURL;
+                    img.classList.remove('hidden');
+                }
+            } else {
+                loginBtn.classList.remove('hidden-auth');
+                loggedInControls.classList.add('hidden-auth');
+                loggedOutView.classList.remove('hidden-auth');
+                habitsContainer.classList.add('hidden-auth');
+                authStatus.innerText = "Please sign in";
+            }
+        }
+
+        const startSync = (userId) => {
+            const habitsRef = collection(db, 'artifacts', appId, 'users', userId, 'habits');
+            const q = query(habitsRef, orderBy("createdAt", "desc"));
+            unsubscribe = onSnapshot(q, (snapshot) => {
+                habits = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                render();
+            }, (error) => {
+                console.error("Sync error:", error);
+                showError("Permission denied. Ensure your Firestore Rules are set correctly.");
+            });
+        };
 
         window.openModal = () => document.getElementById('modal').classList.remove('hidden');
         window.closeModal = () => {
@@ -166,107 +249,41 @@
             document.getElementById('habit-name').value = '';
         };
 
-        // --- AUTHENTICATION WITH RETRY & FALLBACK ---
-        const initAuth = async (retries = 0) => {
-            try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            } catch (error) {
-                if (retries < 5) {
-                    const delay = Math.pow(2, retries) * 1000;
-                    setTimeout(() => initAuth(retries + 1), delay);
-                } else {
-                    document.getElementById('auth-status').innerText = "Sync Error: Check Authorized Domains in Firebase";
-                    document.getElementById('auth-status').classList.add('text-red-500');
-                    console.error("Firebase Auth failed after retries:", error);
-                }
-            }
-        };
-
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                currentUser = user;
-                document.getElementById('auth-status').innerText = `Cloud Active (User: ${user.uid.substring(0,6)})`;
-                document.getElementById('add-btn').disabled = false;
-                document.getElementById('add-btn').classList.remove('opacity-50', 'cursor-not-allowed');
-                startSync(user.uid);
-            }
-        });
-
-        const startSync = (userId) => {
-            // RULE 1: Strict Paths
-            const habitsRef = collection(db, 'artifacts', appId, 'users', userId, 'habits');
-            
-            onSnapshot(habitsRef, (snapshot) => {
-                habits = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                render();
-            }, (error) => {
-                console.error("Firestore sync error:", error);
-                document.getElementById('auth-status').innerText = "Database Error: Check Firestore Rules";
-            });
-        };
-
         window.addHabit = async () => {
-            if (!currentUser) return;
             const name = document.getElementById('habit-name').value;
             const color = document.getElementById('habit-color').value;
-            if (!name) return;
-
+            if (!name || !currentUser) return;
             try {
-                const habitsRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'habits');
-                await addDoc(habitsRef, {
-                    name: name,
-                    color: color,
-                    completedDays: [],
-                    createdAt: Date.now()
+                await addDoc(collection(db, 'artifacts', appId, 'users', currentUser.uid, 'habits'), {
+                    name, color, completedDays: [], createdAt: Date.now()
                 });
                 closeModal();
-            } catch (e) {
-                console.error("Add error:", e);
-            }
-        };
-
-        window.deleteHabit = async (id) => {
-            if (!currentUser || !confirm('Delete this habit?')) return;
-            try {
-                const habitDoc = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'habits', id);
-                await deleteDoc(habitDoc);
-            } catch (e) { console.error(e); }
+            } catch (e) { showError(e.message); }
         };
 
         window.toggleDay = async (habitId, dateStr) => {
             if (!currentUser) return;
             const habit = habits.find(h => h.id === habitId);
             const habitDoc = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'habits', habitId);
-            
-            let newDays = [...habit.completedDays];
-            if (newDays.includes(dateStr)) {
-                newDays = newDays.filter(d => d !== dateStr);
-            } else {
-                newDays.push(dateStr);
+            let newDays = [...(habit.completedDays || [])];
+            newDays = newDays.includes(dateStr) ? newDays.filter(d => d !== dateStr) : [...newDays, dateStr];
+            await updateDoc(habitDoc, { completedDays: newDays });
+        };
+
+        window.deleteHabit = async (id) => {
+            if (confirm('Delete this habit?')) {
+                await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'habits', id));
             }
-            
-            try {
-                await updateDoc(habitDoc, { completedDays: newDays });
-            } catch (e) { console.error(e); }
         };
 
         function get2026Grid() {
             const dates = [];
-            const startDate = new Date(2025, 11, 29); 
+            const startDate = new Date(2025, 11, 29);
             for (let i = 0; i < 53 * 7; i++) {
                 const d = new Date(startDate);
                 d.setDate(startDate.getDate() + i);
-                const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
                 dates.push({
-                    dateStr: dateStr,
-                    monthName: d.toLocaleString('default', { month: 'short' }),
+                    dateStr: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
                     isOutOfRange: d.getFullYear() !== 2026
                 });
             }
@@ -275,61 +292,28 @@
 
         function render() {
             const container = document.getElementById('habits-container');
-            container.innerHTML = '';
-            
             if (habits.length === 0) {
-                container.innerHTML = `<div class="text-center py-20 text-gray-500 border border-dashed border-gray-800 rounded-lg">No habits found. Create one to start cloud tracking!</div>`;
+                container.innerHTML = `<div class="text-center py-20 text-gray-500 border border-dashed border-gray-800 rounded-lg">No habits yet.</div>`;
                 return;
             }
-
+            container.innerHTML = '';
             const gridData = get2026Grid();
-            const months = [];
-            gridData.forEach((d, i) => {
-                if (i % 7 === 0) {
-                    const weekIdx = i / 7;
-                    if (weekIdx === 0) months.push({ name: "Jan", index: 0 });
-                    else if (months.length > 0 && months[months.length-1].name !== d.monthName) {
-                        months.push({ name: d.monthName, index: weekIdx });
-                    }
-                }
-            });
-
-            habits.sort((a,b) => (a.createdAt || 0) - (b.createdAt || 0)).forEach(habit => {
+            habits.forEach(habit => {
                 const card = document.createElement('div');
-                card.className = "bg-[#0d1117] border border-[#30363d] rounded-md p-4";
+                card.className = "bg-[#161b22] border border-[#30363d] rounded-md p-4";
                 card.innerHTML = `
-                    <div class="flex justify-between items-start mb-4">
-                        <h3 class="text-sm font-medium text-gray-200">${habit.name}</h3>
-                        <button onclick="deleteHabit('${habit.id}')" class="text-[10px] text-gray-600 hover:text-red-400 transition">Remove</button>
-                    </div>
+                    <div class="flex justify-between items-center mb-4"><h3 class="text-sm font-medium">${habit.name}</h3><button onclick="deleteHabit('${habit.id}')" class="text-xs text-gray-600 hover:text-red-400">Delete</button></div>
                     <div class="overflow-x-auto custom-scrollbar pb-2">
                         <div class="heatmap-wrapper" style="min-width: 750px;">
-                            <div class="day-labels">
-                                <span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span><span>Sun</span>
-                            </div>
-                            <div class="heatmap-container">
-                                <div class="month-labels-container">
-                                    ${months.map(m => `<div class="month-label" style="left: ${m.index * 14}px;">${m.name}</div>`).join('')}
-                                </div>
-                                <div class="heatmap-grid">
-                                    ${gridData.map(d => {
-                                        const active = habit.completedDays.includes(d.dateStr);
-                                        return `<div class="day-square ${d.isOutOfRange ? 'out-of-range' : ''}" 
-                                                     style="${active ? `background-color: ${habit.color}; outline: none;` : ''}" 
-                                                     title="${d.dateStr}"
-                                                     onclick="toggleDay('${habit.id}', '${d.dateStr}')">
-                                                </div>`;
-                                    }).join('')}
-                                </div>
+                            <div class="day-labels"><span>M</span><span></span><span>W</span><span></span><span>F</span><span></span><span>S</span></div>
+                            <div class="heatmap-grid">
+                                ${gridData.map(d => `<div class="day-square ${d.isOutOfRange ? 'out-of-range' : ''}" style="${(habit.completedDays||[]).includes(d.dateStr) ? `background-color: ${habit.color}; outline:none;` : ''}" onclick="toggleDay('${habit.id}', '${d.dateStr}')"></div>`).join('')}
                             </div>
                         </div>
-                    </div>
-                `;
+                    </div>`;
                 container.appendChild(card);
             });
         }
-
-        initAuth();
     </script>
 </body>
 </html>
