@@ -98,7 +98,7 @@
         <header class="flex justify-between items-center mb-8 border-b border-gray-800 pb-4">
             <div>
                 <h1 class="text-xl font-semibold text-white">Habit Tracker 2026</h1>
-                <p id="auth-status" class="text-[10px] text-gray-500 mt-1">Connecting to cloud...</p>
+                <p id="auth-status" class="text-[10px] text-gray-500 mt-1">Initializing Firebase...</p>
             </div>
             <button id="add-btn" disabled onclick="openModal()" class="bg-[#238636] opacity-50 cursor-not-allowed hover:bg-[#2ea043] text-white px-3 py-1.5 rounded-md text-sm font-medium transition">
                 Create new habit
@@ -106,7 +106,7 @@
         </header>
 
         <div id="habits-container" class="space-y-6">
-            <div class="text-center py-20 text-gray-500">Loading your habits...</div>
+            <div class="text-center py-20 text-gray-500">Waiting for authentication...</div>
         </div>
     </div>
 
@@ -136,55 +136,60 @@
         </div>
     </div>
 
-    <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Firebase Configuration (Empty strings will be populated by environment)
-        const firebaseConfig = JSON.parse(__firebase_config);
+        const firebaseConfig = JSON.parse(__firebase_config || '{}');
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'habit-tracker-2026';
 
         let currentUser = null;
         let habits = [];
 
-        // UI Helpers
         window.openModal = () => document.getElementById('modal').classList.remove('hidden');
         window.closeModal = () => {
             document.getElementById('modal').classList.add('hidden');
             document.getElementById('habit-name').value = '';
         };
 
-        // --- AUTHENTICATION ---
-        const initAuth = async () => {
+        // --- AUTHENTICATION WITH RETRY & FALLBACK ---
+        const initAuth = async (retries = 0) => {
             try {
-                // We always use anonymous for this simple demo
-                await signInAnonymously(auth);
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
             } catch (error) {
-                console.error("Auth error:", error);
-                document.getElementById('auth-status').innerText = "Cloud Sync Error";
+                if (retries < 5) {
+                    const delay = Math.pow(2, retries) * 1000;
+                    setTimeout(() => initAuth(retries + 1), delay);
+                } else {
+                    document.getElementById('auth-status').innerText = "Sync Error: Check Authorized Domains in Firebase";
+                    document.getElementById('auth-status').classList.add('text-red-500');
+                    console.error("Firebase Auth failed after retries:", error);
+                }
             }
         };
 
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 currentUser = user;
-                document.getElementById('auth-status').innerText = `Cloud Active (ID: ${user.uid.substring(0,8)}...)`;
+                document.getElementById('auth-status').innerText = `Cloud Active (User: ${user.uid.substring(0,6)})`;
                 document.getElementById('add-btn').disabled = false;
                 document.getElementById('add-btn').classList.remove('opacity-50', 'cursor-not-allowed');
                 startSync(user.uid);
             }
         });
 
-        // --- FIRESTORE SYNC ---
         const startSync = (userId) => {
+            // RULE 1: Strict Paths
             const habitsRef = collection(db, 'artifacts', appId, 'users', userId, 'habits');
             
-            // Real-time listener
             onSnapshot(habitsRef, (snapshot) => {
                 habits = snapshot.docs.map(doc => ({
                     id: doc.id,
@@ -192,31 +197,37 @@
                 }));
                 render();
             }, (error) => {
-                console.error("Sync error:", error);
+                console.error("Firestore sync error:", error);
+                document.getElementById('auth-status').innerText = "Database Error: Check Firestore Rules";
             });
         };
 
-        // --- HABIT ACTIONS ---
         window.addHabit = async () => {
             if (!currentUser) return;
             const name = document.getElementById('habit-name').value;
             const color = document.getElementById('habit-color').value;
             if (!name) return;
 
-            const habitsRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'habits');
-            await addDoc(habitsRef, {
-                name: name,
-                color: color,
-                completedDays: [],
-                createdAt: Date.now()
-            });
-            closeModal();
+            try {
+                const habitsRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'habits');
+                await addDoc(habitsRef, {
+                    name: name,
+                    color: color,
+                    completedDays: [],
+                    createdAt: Date.now()
+                });
+                closeModal();
+            } catch (e) {
+                console.error("Add error:", e);
+            }
         };
 
         window.deleteHabit = async (id) => {
             if (!currentUser || !confirm('Delete this habit?')) return;
-            const habitDoc = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'habits', id);
-            await deleteDoc(habitDoc);
+            try {
+                const habitDoc = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'habits', id);
+                await deleteDoc(habitDoc);
+            } catch (e) { console.error(e); }
         };
 
         window.toggleDay = async (habitId, dateStr) => {
@@ -231,20 +242,18 @@
                 newDays.push(dateStr);
             }
             
-            await updateDoc(habitDoc, { completedDays: newDays });
+            try {
+                await updateDoc(habitDoc, { completedDays: newDays });
+            } catch (e) { console.error(e); }
         };
 
-        // --- RENDERING LOGIC ---
         function get2026Grid() {
             const dates = [];
-            const startDate = new Date(2025, 11, 29); // Monday
+            const startDate = new Date(2025, 11, 29); 
             for (let i = 0; i < 53 * 7; i++) {
                 const d = new Date(startDate);
                 d.setDate(startDate.getDate() + i);
-                const year = d.getFullYear();
-                const month = String(d.getMonth() + 1).padStart(2, '0');
-                const day = String(d.getDate()).padStart(2, '0');
-                const dateStr = `${year}-${month}-${day}`;
+                const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
                 dates.push({
                     dateStr: dateStr,
                     monthName: d.toLocaleString('default', { month: 'short' }),
@@ -278,7 +287,6 @@
             habits.sort((a,b) => (a.createdAt || 0) - (b.createdAt || 0)).forEach(habit => {
                 const card = document.createElement('div');
                 card.className = "bg-[#0d1117] border border-[#30363d] rounded-md p-4";
-                
                 card.innerHTML = `
                     <div class="flex justify-between items-start mb-4">
                         <h3 class="text-sm font-medium text-gray-200">${habit.name}</h3>
